@@ -8,6 +8,17 @@
 ; 必要に応じてファイル出力やユーザー通知も行えます。
 
 ; ====================================
+; ログ設定
+; ====================================
+; ファイル出力先（未設定ならファイル出力しない）
+global logFilePath := ""
+
+setLogFile(path) {
+    ; ログファイルの出力先を設定する
+    logFilePath := path
+}
+
+; ====================================
 ; log 関数
 ; ====================================
 ; メッセージをログ出力します。
@@ -37,6 +48,19 @@ log(message, level := "info", showMessageBox := false) {
     
     ; OutputDebug でデバッガに出力（DbgView などで確認可能）
     OutputDebug(logMessage)
+
+    ; ファイル出力（設定されている場合のみ）
+    if (logFilePath) {
+        try {
+            ; 追記モードで書き込み
+            file := FileOpen(logFilePath, "a")
+            file.WriteLine(logMessage)
+            file.Close()
+        } catch as err {
+            ; ログ書き込み失敗時はデバッグ出力のみ
+            OutputDebug("[WARN] ログファイル書き込みに失敗: " . err.What)
+        }
+    }
     
     ; エラーレベルで、かつ通知が有効な場合はユーザーに表示
     if (level = "error" && showMessageBox) {
