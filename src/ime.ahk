@@ -1,27 +1,28 @@
 #Requires AutoHotkey v2.0
 
+; ロギングユーティリティ
+#Include lib\log.ahk
+
 ; ====================================
 ; ime.ahk - IME制御ユーティリティ
 ; ====================================
 ; Windows IME のON/OFF切り替え機能を提供します。
+; Windows API を呼び出して IME を制御します。
 
 ; ====================================
 ; toggleIME 関数
 ; ====================================
 ; IME の状態を切り替えます。
-; オン → オフ、オフ → オン
+; 全角/半角キー（vkF3/vkF4）を送信してIMEをトグルします。
 toggleIME() {
-    ; IME の現在の状態を取得
-    currentIMEState := GetIMEState()
-    
-    if (currentIMEState = 1) {
-        ; IME がオンの場合、オフにする
-        SetIMEState(0)
-        log("IME をオフにしました")
-    } else {
-        ; IME がオフの場合、オンにする
-        SetIMEState(1)
-        log("IME をオンにしました")
+    try {
+        ; 全角/半角キーを送信（vkF3sc029）
+        ; vkF3 = 全角/半角キーの仮想キーコード
+        ; sc029 = スキャンコード
+        Send("{vkF3sc029}")
+        log("IME を切り替えました")
+    } catch as err {
+        logError("IME 切り替え処理に失敗しました: " . err.What, false)
     }
 }
 
@@ -29,11 +30,21 @@ toggleIME() {
 ; setIMEOn 関数
 ; ====================================
 ; IME を明示的にオンにします。
+; 現在の状態を確認し、オフの場合のみトグルします。
 setIMEOn() {
-    currentIMEState := GetIMEState()
-    if (currentIMEState != 1) {
-        SetIMEState(1)
-        log("IME をオンにしました")
+    try {
+        ; 現在のIME状態を取得
+        currentState := GetIMEState()
+        
+        if (currentState = 0) {
+            ; IME がオフの場合のみトグル
+            Send("{vkF3sc029}")
+            log("IME をオンにしました")
+        } else {
+            log("IME は既にオンです")
+        }
+    } catch as err {
+        logError("IME のオン処理に失敗しました: " . err.What, false)
     }
 }
 
@@ -41,11 +52,15 @@ setIMEOn() {
 ; setIMEOff 関数
 ; ====================================
 ; IME を明示的にオフにします。
+; 無変換キーを送信して、状態に関わらず確実にオフにします。
 setIMEOff() {
-    currentIMEState := GetIMEState()
-    if (currentIMEState != 0) {
-        SetIMEState(0)
+    try {
+        ; 無変換キー（vk1Dsc07B）を送信してIMEを確実にオフ
+        ; 無変換キーはトグルではなく、常にIMEをオフにする
+        Send("{vk1Dsc07B}")
         log("IME をオフにしました")
+    } catch as err {
+        logError("IME のオフ処理に失敗しました: " . err.What, false)
     }
 }
 
@@ -53,34 +68,26 @@ setIMEOff() {
 ; GetIMEState 関数（内部用）
 ; ====================================
 ; IME の現在の状態を取得します。
-; 戻り値: 1 = オン、0 = オフ
+; 戻り値: 1 = オン、0 = オフ、-1 = 取得失敗
 GetIMEState() {
-    ; WinGetIMEMode を使用して IME の状態を取得
-    imeMode := WinGetIMEMode("A")
-    
-    ; IME モードが 0x0000 の場合はオフ、それ以外はオンと判定
-    return (imeMode != 0x0000) ? 1 : 0
-}
-
-; ====================================
-; SetIMEState 関数（内部用）
-; ====================================
-; IME の状態を設定します。
-; state: 1 = オン、0 = オフ
-SetIMEState(state) {
-    ; 現在のアクティブウィンドウを取得
-    hwnd := WinGetID("A")
-    
-    ; IME をコントロールするためのIUnknown インターフェース
-    ; PostMessage を使用して WM_IME_CONTROL メッセージを送信
-    
-    if (state = 1) {
-        ; IME をオンにする（日本語入力モード）
-        PostMessage(0x0283, 0x0006, 0x0001, , "A")  ; WM_IME_CONTROL, IMC_SETOPENSTATUS
-    } else {
-        ; IME をオフにする（英数字モード）
-        PostMessage(0x0283, 0x0006, 0x0000, , "A")  ; WM_IME_CONTROL, IMC_SETOPENSTATUS
+    try {
+        hwnd := WinGetID("A")
+        
+        ; ImmGetContext でIMEコンテキストを取得
+        hIMC := DllCall("imm32\ImmGetContext", "Ptr", hwnd, "Ptr")
+        
+        if (hIMC) {
+            ; ImmGetOpenStatus でIMEの状態を取得
+            state := DllCall("imm32\ImmGetOpenStatus", "Ptr", hIMC, "Int")
+            
+            ; IMEコンテキストを解放
+            DllCall("imm32\ImmReleaseContext", "Ptr", hwnd, "Ptr", hIMC)
+            
+            return state
+        } else {
+            return -1  ; 取得失敗
+        }
+    } catch {
+        return -1  ; エラー時は取得失敗
     }
-    
-    Sleep(50)  ; IME の状態変更が反映されるまで少し待つ
 }
