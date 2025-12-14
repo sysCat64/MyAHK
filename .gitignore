@@ -1,0 +1,12 @@
+# AutoHotkey build outputs
+build/
+*.exe
+*.ahk.bak
+
+# Logs
+*.log
+
+# Editor/OS
+.vscode/
+.DS_Store
+Thumbs.db
